@@ -48,13 +48,13 @@ static const char *binPathAppleSystemInfo = "/System/Library/PrivateFrameworks/A
 static const uint32_t SectionActive = 1;
 
 // MacBookAir name patches.
-static const uint8_t findAir[] = "MacBookAir";
-static const uint8_t replaceAir[] = "MacBookXir";
-static UserPatcher::BinaryModPatch patchAir {
+static const uint8_t findStringAir[] = "MacBookAir";
+static const uint8_t replaceStringAir[] = "MacBookXir";
+static UserPatcher::BinaryModPatch patchStringAir {
     CPU_TYPE_X86_64,
-    findAir,
-    replaceAir,
-    strlen(reinterpret_cast<const char *>(findAir)),
+    findStringAir,
+    replaceStringAir,
+    strlen(reinterpret_cast<const char *>(findStringAir)),
     0,
     1,
     UserPatcher::FileSegment::SegmentTextCstring,
@@ -75,41 +75,6 @@ static UserPatcher::BinaryModPatch patchProcStr {
     SectionActive
 };
 
-// MacBookAir name patches.
-static const uint8_t findProc2Str[] = { 0x48, 0x85, 0xC0, 0x74, 0x26 };
-static const uint8_t replaceProc2Str[] = { 0x48, 0x85, 0xC0, 0x71, 0x26 };
-static UserPatcher::BinaryModPatch patchProc2Str {
-    CPU_TYPE_X86_64,
-    findProc2Str,
-    replaceProc2Str,
-    arrsize(findProc2Str),
-    0,
-    1,
-    UserPatcher::FileSegment::SegmentTextText,
-    SectionActive
-};
-
-// 49 89 D7 41 89 F4 41 89 FE
-// 4D 31 FF 41 89 F4 41 89 FE
-
-//static const uint8_t findTest[] = { 0x49, 0x89, 0xD7, 0x41, 0x89, 0xF4, 0x41, 0x89, 0xFE };
-//static const uint8_t replaceTest[] = { 0x4D, 0x31, 0xFF, 0x41, 0x89, 0xF4, 0x41, 0x89, 0xFE };
-//static uint8_t findTest[]; // // 48 31 C0 C3
-/*static uint8_t findTest[32];
-static uint8_t replaceTest[32];// = { 0x48, 0x31, 0xC0, 0xC3 };
-
-static UserPatcher::BinaryModPatch patchTest {
-    CPU_TYPE_X86_64,
-    findTest,
-    replaceTest,
-    arrsize(replaceTest),
-    0,
-    1,
-    UserPatcher::FileSegment::SegmentTextText,
-    SectionActive
-};*/
-
-//static uint8_t replaceTest[] = { 0x55, 0x48, 0x89, 0xE5, 0x48, 0x31, 0xFF, 0x48, 0x8D, 0x35, 0xD7, 0x1F, 0x00, 0x00, 0xBA, 0x00, 0x01, 0x00, 0x08, 0xE8, 0xEA, 0x1A, 0x00, 0x00, 0x5D, 0xC3} ;
 
 
 //
@@ -203,47 +168,6 @@ static UserPatcher::BinaryModPatch patchesAppleSystemInfo[] {
 };
 
 
-
-// 48 31 FF - xor rdi, rdi
-// 48 8D 35 3E 1E 00 00 - lea        rsi, qword [aIntelCoreSolo] - relative
-// BA 00 01 00 08 E8 XX XX XX XX - mov edx, 0x8000100 / call
-
-
-
-
-// Find:    BF 02 00 00 00 E8 XX XX XX XX
-// Replace: B8 08 00 00 00 0F 1F 44 00 00
-static const size_t patchMemBytesCount = 10;
-static const uint8_t replaceMemBytes[patchMemBytesCount] = { 0xB8, 0x00, 0x00, 0x00, 0x00, 0x0F, 0x1F, 0x44, 0x00, 0x00 };
-
-// Patching info for System Information binary.
-static uint8_t findMemBytesSystemInformation[patchMemBytesCount] = { };
-static UserPatcher::BinaryModPatch patchMemBytesSystemInformation {
-    CPU_TYPE_X86_64,
-    findMemBytesSystemInformation,
-    replaceMemBytes,
-    patchMemBytesCount,
-    0,
-    1,
-    UserPatcher::FileSegment::SegmentTextText,
-    SectionActive
-};
-
-// Patching info for SPMemoryReporter binary.
-static uint8_t findMemBytesSPMemoryReporter[patchMemBytesCount] = { };
-static UserPatcher::BinaryModPatch patchMemBytesSPMemoryReporter {
-    CPU_TYPE_X86_64,
-    findMemBytesSPMemoryReporter,
-    replaceMemBytes,
-    patchMemBytesCount,
-    0,
-    1,
-    UserPatcher::FileSegment::SegmentTextText,
-    SectionActive
-};
-
-
-
 //
 // Patch to hide CPU name from SPPlatformReporter.
 //
@@ -274,12 +198,59 @@ static UserPatcher::BinaryModPatch patchesSPPlatformReporter[] {
     }
 };
 
+
+
+
+// Find:    BF 02 00 00 00 E8 XX XX XX XX
+// Replace: B8 08 00 00 00 0F 1F 44 00 00
+static const uint8_t replaceMemBytes[] = { 0xB8, 0x00, 0x00, 0x00, 0x00, 0x0F, 0x1F, 0x44, 0x00, 0x00 };
+static const size_t findMemBytesCount = arrsize(replaceMemBytes);
+static uint8_t findMemBytesSystemInformation[findMemBytesCount];
+static uint8_t findMemBytesSPMemoryReporter[findMemBytesCount];
+
+//
+// SPMemoryReporter patches.
+//
+static UserPatcher::BinaryModPatch patchesSPMemoryReporter[] {
+    {
+        CPU_TYPE_X86_64,
+        findMemBytesSPMemoryReporter,
+        replaceMemBytes,
+        findMemBytesCount,
+        0,
+        1,
+        UserPatcher::FileSegment::SegmentTextText,
+        SectionActive
+    },
+    patchStringAir
+};
+
+
+//
+// System Information patches.
+//
+static UserPatcher::BinaryModPatch patchesSystemInformation[] {
+    {
+        CPU_TYPE_X86_64,
+        findMemBytesSystemInformation,
+        replaceMemBytes,
+        findMemBytesCount,
+        0,
+        1,
+        UserPatcher::FileSegment::SegmentTextText,
+        SectionActive
+    },
+    patchStringAir
+};
+
+
+
+
+
 // BinaryModInfo array containing all patches required. Paths changed in 10.15.
 static UserPatcher::BinaryModInfo binaryMemPatchesCatalina[] {
-    { binPathSystemInformationCatalina, &patchMemBytesSystemInformation, 1},
-    { binPathSPMemoryReporter, &patchMemBytesSPMemoryReporter, 1},
-    { binPathSystemInformationCatalina, &patchAir, 1 },
-    { binPathSPMemoryReporter, &patchAir, 1 },
+    { binPathSystemInformationCatalina, patchesSystemInformation, arrsize(patchesSystemInformation)},
+    { binPathSPMemoryReporter, patchesSPMemoryReporter, arrsize(patchesSPMemoryReporter)},
     { binPathSPPlatformReporter, patchesSPPlatformReporter, arrsize(patchesSPPlatformReporter) },
     { binPathAppleSystemInfo, patchesAppleSystemInfo, arrsize(patchesAppleSystemInfo) }
     //{ binPathAppleSystemInfo, &patchTest3, 1 }//,
@@ -288,16 +259,14 @@ static UserPatcher::BinaryModInfo binaryMemPatchesCatalina[] {
 
 // BinaryModInfo array containing all patches required for 10.14 and below.
 static UserPatcher::BinaryModInfo binaryMemPatches[] {
-    { binPathSystemInformation, &patchMemBytesSystemInformation, 1},
-    { binPathSPMemoryReporter, &patchMemBytesSPMemoryReporter, 1},
-    { binPathSystemInformation, &patchAir, 1 },
-    { binPathSPMemoryReporter, &patchAir, 1 }
+    //{ binPathSystemInformation, &patchMemBytesSystemInformation, 1},
+    //{ binPathSPMemoryReporter, &patchMemBytesSPMemoryReporter, 1},
 };
 
 // BinaryModInfo array containing all patches required for 10.8.
 // 10.8 does not have ASI_IsPlatformFeatureEnabled or strings in SPMemoryReporter.
 static UserPatcher::BinaryModInfo binaryPatchesML[] {
-    { binPathSystemInformation, &patchAir, 1 },
+   // { binPathSystemInformation, &patchAir, 1 },
 };
 
 // Find:    31 C9 84 C0 0F 95 C1 89 C8 5D C3
@@ -356,64 +325,6 @@ static UserPatcher::ProcInfo procInfoCatalina[] =
 // System Information process info.
 static UserPatcher::ProcInfo procInfo = { binPathSystemInformation, static_cast<uint32_t>(strlen(binPathSystemInformation)), 1 };
 
-static bool buildPatch(KernelPatcher &patcher, const char *path, uint8_t *findBuffer) {
-    DBGLOG("SystemProfilerMemoryFixup", "buildPatches() start");
-    
-    // Get contents of binary.
-    size_t outSize;
-    uint8_t *buffer = FileIO::readFileToBuffer(path, outSize);
-    if (buffer == NULL) {
-        DBGLOG("SystemProfilerMemoryFixup", "Failed to read binary: %s\n", path);
-        return false;
-    }
-    
-    // Find where ASI_IsPlatformFeatureEnabled is called.
-    off_t index = 0;
-    for (off_t i = 0; i < outSize; i++) {
-        if (buffer[i] == 0xBF && buffer[i+1] == 0x02 && buffer[i+2] == 0x00
-            && buffer[i+3] == 0x00 && buffer[i+4] == 0x00 && buffer[i+5] == 0xE8) {
-            index = i;
-            break;
-        }
-    }
-    
-    // If we found no match, we can't go on.
-    if (index == 0) {
-        DBGLOG("SystemProfilerMemoryFixup", "Failed to get index into binary: %s\n", path);
-        Buffer::deleter(buffer);
-        return false;
-    }
-    
-    // Build find pattern.
-    uint8_t *bufferOffset = buffer + index;
-    for (uint32_t i = 0; i < patchMemBytesCount; i++)
-        findBuffer[i] = bufferOffset[i];
-    
-    // Free buffer.
-    Buffer::deleter(buffer);
-    return true;
-}
-
-static void buildPatchesCatalina(void *user, KernelPatcher &patcher) {
-    // Build patches for binaries.
-    if (!buildPatch(patcher, binPathSystemInformationCatalina, findMemBytesSystemInformation)
-        || !buildPatch(patcher, binPathSPMemoryReporter, findMemBytesSPMemoryReporter))
-        return;
-    
-    // Load patches into Lilu for 10.15+.
-   // lilu.onProcLoadForce(&procInfoCatalina, 1, nullptr, nullptr, binaryMemPatchesCatalina, arrsize(binaryMemPatchesCatalina));
-   // lilu.onProcLoadForce(&procInfoCatalina, 1, nullptr, nullptr, binaryPciPatchesCatalina, arrsize(binaryPciPatchesCatalina));
-}
-
-static void buildPatchesOld(void *user, KernelPatcher &patcher) {
-    // Build patches for binaries.
-    if (!buildPatch(patcher, binPathSystemInformation, findMemBytesSystemInformation)
-        || !buildPatch(patcher, binPathSPMemoryReporter, findMemBytesSPMemoryReporter))
-        return;
-    
-    // Load patches into Lilu for 10.9 to 10.14.
-    lilu.onProcLoadForce(&procInfo, 1, nullptr, nullptr, binaryMemPatches, arrsize(binaryMemPatches));
-}
 
 // Replace:
 // 48 31 C0 C3
@@ -613,12 +524,62 @@ static bool buildPatchesAppleSystemInfo(void *user, KernelPatcher &patcher) {
     return true;
 }
 
+static bool patchMemoryUpgradability(void *user, KernelPatcher &patcher) {
+    DBGLOG(SPFX_PLUGIN, "Generating memory upgradeablity state patches...");
+    
+    // Catalina and higher has System Information in different location.
+    const char *binPaths[] = {
+        binPathSPMemoryReporter,
+        getKernelVersion() >= KernelVersion::Catalina ? binPathSystemInformationCatalina : binPathSystemInformation
+    };
+    
+    uint8_t *binFinds[] = {
+        findMemBytesSPMemoryReporter,
+        findMemBytesSystemInformation
+    };
+    
+    
+    for (int i = 0; i < arrsize(binPaths); i++) {
+        size_t bufferSize;
+        uint8_t *buffer = FileIO::readFileToBuffer(binPaths[i], bufferSize);
+        if (buffer == NULL) {
+            SYSLOG(SPFX_PLUGIN, "Failed to read binary: %s\n", binPaths[i]);
+            return false;
+        }
+        
+        // Locate where ASI_IsPlatformFeatureEnabled is called.
+        off_t address = 0;
+        for (off_t i = 0; i < bufferSize - 6; i++) {
+            if (buffer[i] == 0xBF
+                && buffer[i + 1] == 0x02
+                && buffer[i + 2] == 0x00
+                && buffer[i + 3] == 0x00
+                && buffer[i + 4] == 0x00
+                && buffer[i + 5] == 0xE8) {
+                address = i;
+                break;
+            }
+        }
+        if (address == 0) {
+            SYSLOG(SPFX_PLUGIN, "Failed to get patch point\n");
+            Buffer::deleter(buffer);
+            return false;
+        }
+        
+        lmemcpy(binFinds[i], &buffer[address], findMemBytesCount);
+        Buffer::deleter(buffer);
+    }
+    
+    return true;
+}
+
 static void buildPatches(void *user, KernelPatcher &patcher) {
 
     
     
     buildPatchesSPPlatformReporter(user, patcher);
     buildPatchesAppleSystemInfo(user, patcher);
+    patchMemoryUpgradability(user, patcher);
     IOSleep(5000);
     return;
     
@@ -684,17 +645,17 @@ static void spmemfxStart() {
     // Are we on 10.15 or above?
     if (getKernelVersion() >= KernelVersion::Catalina) {
         // Load callback so we can determine patterns to search for.
-        lilu.onPatcherLoad(buildPatchesCatalina);
+        //lilu.onPatcherLoad(buildPatchesCatalina);
         lilu.onProcLoadForce(procInfoCatalina, arrsize(procInfoCatalina), nullptr, nullptr, binaryMemPatchesCatalina, arrsize(binaryMemPatchesCatalina));
 
         
     } else if (getKernelVersion() >= KernelVersion::Mavericks) {
         // Load callback so we can determine patterns to search for.
-        lilu.onPatcherLoad(buildPatchesOld);
+     //   lilu.onPatcherLoad(buildPatchesOld);
         
     } else if (getKernelVersion() == KernelVersion::MountainLion) {
         // 10.8 requires only a single patch.
-        lilu.onProcLoadForce(&procInfo, 1, nullptr, nullptr, binaryPatchesML, arrsize(binaryPatchesML));
+       // lilu.onProcLoadForce(&procInfo, 1, nullptr, nullptr, binaryPatchesML, arrsize(binaryPatchesML));
     }
 }
 
