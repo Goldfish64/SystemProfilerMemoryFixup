@@ -24,6 +24,8 @@
 #include <Headers/kern_api.hpp>
 #include <Headers/kern_file.hpp>
 
+#define SPFX_PLUGIN     "SPFX"
+
 typedef struct {
     uint32_t MajorType;
     uint32_t MinorType;
@@ -115,6 +117,8 @@ static UserPatcher::BinaryModPatch patchTest {
 //
 //
 
+// Patch 1
+//
 // Find (generated at runtime):
 //   Starting instructions of _ASI_CopyCPUKind with 12 bytes of immediate previous function
 //
@@ -123,11 +127,17 @@ static UserPatcher::BinaryModPatch patchTest {
 //   mov rbp, rsp
 //   jmp [findASICopyCPUKind2]
 //
+static const size_t findASICopyCPUKind1Offset = 12;
+static const size_t replaceASICopyCPUKind1JmpOffset = findASICopyCPUKind1Offset + 5;
 static uint8_t replaceASICopyCPUKind1[] = { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x55, 0x48, 0x89, 0xE5, 0xE9, 0x94, 0x01, 0x00, 0x00 };
 static uint8_t findASICopyCPUKind1[arrsize(replaceASICopyCPUKind1)];
 
-// Find (generated at runtime):
+// Patch 2
 //
+// Find (generated at runtime):
+//  ... (10 bytes)
+//  mov edx, 0x8000100
+//  call...
 //
 // Replace (partially generated at runtime, address of STRING):
 //   xor rdi, rdi
@@ -135,9 +145,12 @@ static uint8_t findASICopyCPUKind1[arrsize(replaceASICopyCPUKind1)];
 //   mov edx, 0x8000100
 //   call...
 //
-static uint8_t replaceASICopyCPUKind2[] = { 0x48, 0x31, 0xFF, 0x48, 0x8D, 0x35, 0x3E, 0x1E, 0x00, 0x00, 0xBA, 0x00, 0x01, 0x00, 0x08, 0xE8 };
+static const size_t findASICopyCPUKind2Offset = 10;
+static const uint8_t replaceASICopyCPUKind2[] = { 0x48, 0x31, 0xFF, 0x48, 0x8D, 0x35, 0x3E, 0x1E, 0x00, 0x00, 0xBA, 0x00, 0x01, 0x00, 0x08, 0xE8 };
 static uint8_t findASICopyCPUKind2[arrsize(replaceASICopyCPUKind2)];
 
+// Patch 3
+//
 // Find (generated at runtime):
 //
 //
@@ -149,8 +162,8 @@ static uint8_t findASICopyCPUKind2[arrsize(replaceASICopyCPUKind2)];
 //   nop
 //   nop
 //
-static uint8_t replaceASICopyCPUKind3[] = { 0x5D, 0xC3, 0x90, 0x90, 0x90, 0x90 };
-static uint8_t findASICopyCPUKind3[arrsize(replaceASICopyCPUKind3)];
+static const uint8_t replaceASICopyCPUKind3[] = { 0x5D, 0xC3, 0x90, 0x90, 0x90, 0x90 };
+static uint8_t findASICopyCPUKind3[arrsize(replaceASICopyCPUKind3)];// = { 0x48, 0x8B ,0x73, 0x18, 0x4C, 0x89 };
 
 
 //
@@ -182,7 +195,7 @@ static UserPatcher::BinaryModPatch patchesAppleSystemInfo[] {
         findASICopyCPUKind3,
         replaceASICopyCPUKind3,
         arrsize(findASICopyCPUKind3),
-        0,
+        1, // Required to skip over similar pattern used for patch 2 above.
         1,
         UserPatcher::FileSegment::SegmentTextText,
         SectionActive
@@ -454,135 +467,161 @@ static void lmemcpy(void* dst, const void* src, size_t length)
 // _ASI_CopyCPUKind - returns name of CPU, used as key for looking up localized name
 
 
+static bool buildPatchesSPPlatformReporter(void *user, KernelPatcher &patcher) {
+    DBGLOG(SPFX_PLUGIN, "Generating patches for SPPlatformReporter");
+    
+    size_t bufferSize;
+    uint8_t *buffer = FileIO::readFileToBuffer(binPathSPPlatformReporter, bufferSize);
+    if (buffer == NULL) {
+        SYSLOG(SPFX_PLUGIN, "Failed to read SPPlatformReporter binary: %s\n", binPathSPPlatformReporter);
+        return false;
+    }
+    
+    // Determine where _ASI_CopyCPUKind is called.
+    //   mov edi, 0x1
+    //   call...
+    off_t address = 0;
+    for (off_t i = 0; i < bufferSize + 5; i++) {
+        if (buffer[i] == 0xBF
+            && buffer[i + 1] == 0x01
+            && buffer[i + 2] == 0x00
+            && buffer[i + 3] == 0x00
+            && buffer[i + 4] == 0x00
+            && buffer[i + 5] == 0xE8) {
+            address = i + 5;
+            break;
+        }
+    }
+    if (address == 0)
+        return false;
+    
+    // Store find pattern.
+    DBGLOG(SPFX_PLUGIN, "Found _ASI_CopyCPUKind @ 0x%llX", address);
+    lmemcpy(findSPPlatformReporterHideCPU, &buffer[address], arrsize(findSPPlatformReporterHideCPU));
+    return true;
+}
+
+static bool buildPatchesAppleSystemInfo(void *user, KernelPatcher &patcher) {
+    DBGLOG(SPFX_PLUGIN, "Generating patches for AppleSystemInfo");
+    
+    MachInfo *machInfo = MachInfo::create();
+    if (machInfo == NULL) {
+        SYSLOG(SPFX_PLUGIN, "Failed to create mach info for AppleSystemInfo");
+        return false;
+    }
+    
+    if (machInfo->init(&binPathAppleSystemInfo) != KERN_SUCCESS
+        || machInfo->setRunningAddresses(0) != KERN_SUCCESS) {
+        machInfo->deinit();
+        MachInfo::deleter(machInfo);
+        SYSLOG(SPFX_PLUGIN, "Failed to init mach info for AppleSystemInfo");
+        return false;
+    }
+    
+    mach_vm_address_t addressCopyCPUKind = machInfo->solveSymbol("_ASI_CopyCPUKind");
+    if (addressCopyCPUKind == 0) {
+        machInfo->deinit();
+        MachInfo::deleter(machInfo);
+        SYSLOG(SPFX_PLUGIN, "Failed to locate symbol _ASI_CopyCPUKind");
+        return false;
+    }
+    DBGLOG(SPFX_PLUGIN, "Located symbol _ASI_CopyCPUKind @ 0x%llX", addressCopyCPUKind);
+    machInfo->deinit();
+    MachInfo::deleter(machInfo);
+    
+    size_t bufferSize;
+    uint8_t *buffer = FileIO::readFileToBuffer(binPathAppleSystemInfo, bufferSize);
+    if (buffer == NULL) {
+        SYSLOG(SPFX_PLUGIN, "Failed to read AppleSystemInfo binary: %s\n", binPathAppleSystemInfo);
+        return false;
+    }
+    
+    if (addressCopyCPUKind <= findASICopyCPUKind1Offset
+        || addressCopyCPUKind < findASICopyCPUKind2Offset
+        || addressCopyCPUKind < arrsize(findASICopyCPUKind3)
+        || bufferSize < addressCopyCPUKind - findASICopyCPUKind1Offset + arrsize(findASICopyCPUKind1)) {
+        SYSLOG(SPFX_PLUGIN, "Offset of symbol _ASI_CopyCPUKind is not valid.");
+        return false;
+    }
+    
+    // Copy patch 1.
+    lmemcpy(findASICopyCPUKind1, &buffer[addressCopyCPUKind - findASICopyCPUKind1Offset], arrsize (findASICopyCPUKind1));
+    lmemcpy(replaceASICopyCPUKind1, findASICopyCPUKind1, findASICopyCPUKind1Offset);
+    
+    // Generate find pattern for patch 2. TODO: Determine end bounds for function.
+    //
+    // Locate bytes directly before the first "call CFStringCreateWithCString".
+    // Find:
+    //   mov edx, 0x8000100
+    //   call...
+    //
+    mach_vm_address_t addressCfString1 = 0;
+    for (off_t i = addressCopyCPUKind; i < bufferSize - sizeof(uint32_t) - 1; i++) {
+        if (buffer[i] == 0xBA && *((uint32_t*)&buffer[i + 1]) == 0x8000100) {
+            // Search for call instruction within 16 bytes.
+            for (off_t j = i + 1 + sizeof(uint32_t); j < i + 16 && j < bufferSize - sizeof(uint32_t) - 1; j++) {
+                if (buffer[j] == 0xE8) {
+                    addressCfString1 = j - sizeof(uint32_t) - 1 - findASICopyCPUKind2Offset;
+                    break;
+                }
+            }
+            if (addressCfString1 != 0)
+                break;
+        }
+    }
+    
+    if (addressCfString1 == 0 ||
+        bufferSize < addressCfString1 + arrsize(findASICopyCPUKind2)) {
+        SYSLOG(SPFX_PLUGIN, "Failed to locate CFStringCreateWithCString patch point 1");
+        return false;
+    }
+    DBGLOG(SPFX_PLUGIN, "Located CFStringCreateWithCString patch point 1 @ 0x%llX", addressCfString1);
+    
+    // Copy patch 2.
+    lmemcpy(findASICopyCPUKind2, &buffer[addressCfString1], arrsize(findASICopyCPUKind2));
+    *(uint32_t*)(&replaceASICopyCPUKind1[replaceASICopyCPUKind1JmpOffset]) = (uint32_t)(addressCfString1 - (addressCopyCPUKind - findASICopyCPUKind1Offset + arrsize(findASICopyCPUKind1)));
+    DBGLOG(SPFX_PLUGIN, "Short jump 0x%X", (uint32_t)(addressCfString1 - (addressCopyCPUKind - findASICopyCPUKind1Offset + arrsize(findASICopyCPUKind1))));
+    
+    for (int i = 0; i < arrsize(findASICopyCPUKind1); i++) {
+        DBGLOG(SPFX_PLUGIN, "find1 (%u): 0x%X 0x%X", i, findASICopyCPUKind1[i], replaceASICopyCPUKind1[i]);
+    }
+    
+    // Generate find pattern for patch 3.
+    //
+    // Locate bytes directly before the second "call CFStringCreateWithCString".
+    // Start at previous offset with find buffer size and call instruction size added.
+    // Find:
+    //   mov edx, 0x8000100
+    //   call...
+    //
+    mach_vm_address_t addressCfString2 = 0;
+    for (off_t i = addressCfString1 + arrsize(findASICopyCPUKind2) + findASICopyCPUKind2Offset; i < bufferSize - sizeof(uint32_t) - 1; i++) {
+        if (buffer[i] == 0xBA && *((uint32_t*)&buffer[i + 1]) == 0x8000100) {
+            addressCfString2 = i;
+            break;
+        }
+    }
+    
+    if (addressCfString2 == 0 ||
+        bufferSize < addressCfString2 + arrsize(findASICopyCPUKind3)) {
+        SYSLOG(SPFX_PLUGIN, "Failed to locate CFStringCreateWithCString patch point 2");
+        return false;
+    }
+    DBGLOG(SPFX_PLUGIN, "Located CFStringCreateWithCString patch point 2 @ 0x%llX", addressCfString2);
+    lmemcpy(findASICopyCPUKind3, &buffer[addressCfString2], arrsize(findASICopyCPUKind3));
+    
+    return true;
+}
+
 static void buildPatches(void *user, KernelPatcher &patcher) {
-    KernelVersion kernelVersion = getKernelVersion();
-    
-    MachInfo *infoAsiFramework = MachInfo::create();
-    if (infoAsiFramework == NULL) {
-        panic("SystemProfilerMemoryFixup::buildPatches(): Failed to create mach info for AppleSystemInfo\n");
-        return;
-    }
-    
-    if (infoAsiFramework->init(&binPathAppleSystemInfo) != KERN_SUCCESS
-        || infoAsiFramework->setRunningAddresses(0) != KERN_SUCCESS) {
-        infoAsiFramework->deinit();
-        MachInfo::deleter(infoAsiFramework);
-        panic("SystemProfilerMemoryFixup::buildPatches(): Failed to create mach info for AppleSystemInfo\n");
-        return;
-    }
-    
-    mach_vm_address_t address = infoAsiFramework->solveSymbol("_ASI_CopyCPUKind");
-    if (address == 0) {
-        infoAsiFramework->deinit();
-        MachInfo::deleter(infoAsiFramework);
-        panic("SystemProfilerMemoryFixup::buildPatches(): Failed to create mach info for AppleSystemInfo\n");
-        return;
-    }
-    
-    IOLog("SPFX SystemProfilerMemoryFixup::buildPatches() Found _ASI_CopyCPUKind @ 0x%X\n", address);
+
     
     
-    mach_vm_address_t addressCoreSolo = 0x38a7;
-    IOLog("SPFX SystemProfilerMemoryFixup::buildPatches() Found aIntelCoreSolo @ 0x%X\n", addressCoreSolo);
-    
-    uint8_t *buf = readBytes(binPathAppleSystemInfo, address, 4096);
-    
-    mach_vm_address_t cfStringAddress = 0;
-    for (uint32_t i = 0; i < 4096 - sizeof (uint32_t) - 2; i++) {
-        if (buf[i] == 0xBA && *((uint32_t*)&buf[i+1]) == 0x8000100 && buf[i+1+sizeof(uint32_t)] == 0xE8) {
-            DBGLOG("SPFX", "Found CFString statement at 0x%X", address + i);
-            cfStringAddress = address + i;
-            break;
-        }
-    }
-    
-    // E9 94 01 00 00 - jmp to section below - add actual calc
-    
-    
-    // 48 31 FF - xor rdi, rdi
-    // 48 8D 35 3E 1E 00 00 - lea        rsi, qword [aIntelCoreSolo] - relative
-    // BA 00 01 00 08 E8 XX XX XX XX - mov edx, 0x8000100 / call
-    // 5D C3 - pop rbp / ret
-    
-    uint8_t *buffer = readBytes(binPathAppleSystemInfo, address - 12, arrsize(findASICopyCPUKind1));
-    if (buffer == NULL) {
-        panic("SystemProfilerMemoryFixup::buildPatches(): Failed to create mach info for AppleSystemInfo\n");
-    }
-    
-    //lmemcpy(findTest, buffer, arrsize(findTest));
-    lmemcpy (findASICopyCPUKind1, buffer, arrsize (findASICopyCPUKind1));
-    for (int i = 0; i < 12; i++) {
-        replaceASICopyCPUKind1[i] = findASICopyCPUKind1[i];
-    }
-    
-    IOLog("SPFX1 0x%X 0x%X 0x%X 0x%X\n", findASICopyCPUKind1[0], findASICopyCPUKind1[1], findASICopyCPUKind1[2], findASICopyCPUKind1[3]);
-    
-    uint8_t *buffer2 = readBytes(binPathAppleSystemInfo, cfStringAddress - 10, arrsize(findASICopyCPUKind2));
-    if (buffer2 == NULL) {
-        panic("SystemProfilerMemoryFixup::buildPatches(): Failed to create mach info for AppleSystemInfo\n");
-    }
-    
-    //lmemcpy(findTest, buffer, arrsize(findTest));
-    lmemcpy (findASICopyCPUKind2, buffer2, arrsize (findASICopyCPUKind2));
-    
-    IOLog("SPFX2 0x%X 0x%X 0x%X 0x%X\n", findASICopyCPUKind2[0], findASICopyCPUKind2[1], findASICopyCPUKind2[2], findASICopyCPUKind2[3]);
-    
-    
-    uint8_t *buffer3 = readBytes(binPathAppleSystemInfo, cfStringAddress + 17, arrsize(findASICopyCPUKind3));
-    if (buffer3 == NULL) {
-        panic("SystemProfilerMemoryFixup::buildPatches(): Failed to create mach info for AppleSystemInfo\n");
-    }
-    
-    //lmemcpy(findTest, buffer, arrsize(findTest));
-    lmemcpy (findASICopyCPUKind3, buffer3, arrsize (findASICopyCPUKind3));
-    
-    IOLog("SPFX3 0x%X 0x%X 0x%X 0x%X\n", findASICopyCPUKind3[0], findASICopyCPUKind3[1], findASICopyCPUKind3[2], findASICopyCPUKind3[3]);
-    
-    
-    MachInfo *infoSPPlatform = MachInfo::create();
-    if (infoSPPlatform == NULL) {
-        panic("SystemProfilerMemoryFixup::buildPatches(): Failed to create mach info for AppleSystemInfo\n");
-        return;
-    }
-    
-    if (infoSPPlatform->init(&binPathSPPlatformReporter) != KERN_SUCCESS
-        || infoSPPlatform->setRunningAddresses(0) != KERN_SUCCESS) {
-        infoAsiFramework->deinit();
-        MachInfo::deleter(infoAsiFramework);
-        panic("SystemProfilerMemoryFixup::buildPatches(): Failed to create mach info for AppleSystemInfo\n");
-        return;
-    }
-    
-    mach_vm_address_t address3 = infoSPPlatform->solveSymbol("imp___stubs__ASI_CopyCPUKind");
-    
-    IOLog("SPFX SystemProfilerMemoryFixup::buildPatches() Found imp___stubs__ASI_CopyCPUKind @ 0x%X\n", address3);
-    
-    // Get contents of binary.
-    size_t outSize;
-    uint8_t *buffer4 = FileIO::readFileToBuffer(binPathSPPlatformReporter, outSize);
-    if (buffer == NULL) {
-        //DBGLOG("SystemProfilerMemoryFixup", "Failed to read binary: %s\n", path);
-        return;
-    }
-    
-    // Find where ASI_IsPlatformFeatureEnabled is called.
-    off_t index = 0;
-    for (off_t i = 0; i < outSize; i++) {
-        if (buffer4[i] == 0xBF
-            && buffer4[i+1] == 0x01
-            && buffer4[i+2] == 0x00
-            && buffer4[i+3] == 0x00
-            && buffer4[i+4] == 0x00
-            && buffer4[i+5] == 0xE8) {
-            index = i + 5;
-            break;
-        }
-    }
-    IOLog("SPFX SystemProfilerMemoryFixup::buildPatches() Found patch point @ 0x%X\n", index);
-    
-    lmemcpy(findSPPlatformReporterHideCPU, &buffer4[index], arrsize(findSPPlatformReporterHideCPU));
-    
+    buildPatchesSPPlatformReporter(user, patcher);
+    buildPatchesAppleSystemInfo(user, patcher);
     IOSleep(5000);
+    return;
+    
     
    /* vnode_t node = NULL;
     
