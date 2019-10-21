@@ -111,7 +111,8 @@ static uint8_t findASICopyCPUKind1[arrsize(replaceASICopyCPUKind1)];
 //   call...
 //
 static const size_t findASICopyCPUKind2Offset = 10;
-static const uint8_t replaceASICopyCPUKind2[] = { 0x48, 0x31, 0xFF, 0x48, 0x8D, 0x35, 0x3E, 0x1E, 0x00, 0x00, 0xBA, 0x00, 0x01, 0x00, 0x08, 0xE8 };
+static const size_t replaceASICopyCPUKind2NameOffset = 6;
+static uint8_t replaceASICopyCPUKind2[] = { 0x48, 0x31, 0xFF, 0x48, 0x8D, 0x35, 0x00, 0x00, 0x00, 0x00, 0xBA, 0x00, 0x01, 0x00, 0x08, 0xE8 };
 static uint8_t findASICopyCPUKind2[arrsize(replaceASICopyCPUKind2)];
 
 // Patch 3
@@ -130,6 +131,9 @@ static uint8_t findASICopyCPUKind2[arrsize(replaceASICopyCPUKind2)];
 static const uint8_t replaceASICopyCPUKind3[] = { 0x5D, 0xC3, 0x90, 0x90, 0x90, 0x90 };
 static uint8_t findASICopyCPUKind3[arrsize(replaceASICopyCPUKind3)];// = { 0x48, 0x8B ,0x73, 0x18, 0x4C, 0x89 };
 
+// String patch.
+static uint8_t findStringASICPUName[64];
+static uint8_t replaceStringASICPUName[64];
 
 //
 // AppleSystemInfo patches.
@@ -163,6 +167,16 @@ static UserPatcher::BinaryModPatch patchesAppleSystemInfo[] {
         1, // Required to skip over similar pattern used for patch 2 above.
         1,
         UserPatcher::FileSegment::SegmentTextText,
+        SectionActive
+    },
+    {
+        CPU_TYPE_X86_64,
+        findStringASICPUName,
+        replaceStringASICPUName,
+        arrsize(findStringASICPUName),
+        0,
+        1,
+        UserPatcher::FileSegment::SegmentTextCstring,
         SectionActive
     }
 };
@@ -377,14 +391,16 @@ static void lmemcpy(void* dst, const void* src, size_t length)
 // _ASI_NumberOfCPUs - returns number of processors
 // _ASI_CopyCPUKind - returns name of CPU, used as key for looking up localized name
 
-
-static bool buildPatchesSPPlatformReporter(void *user, KernelPatcher &patcher) {
-    DBGLOG(SPFX_PLUGIN, "Generating patches for SPPlatformReporter");
+static bool patchCPUName(void *user, KernelPatcher &patcher) {
+    DBGLOG(SPFX_PLUGIN, "Generating patches for CPU name...");
     
-    size_t bufferSize;
+    //
+    // Patch SPPlatformReporter to hide CPU name first.
+    //
+    size_t bufferSize = 0;
     uint8_t *buffer = FileIO::readFileToBuffer(binPathSPPlatformReporter, bufferSize);
     if (buffer == NULL) {
-        SYSLOG(SPFX_PLUGIN, "Failed to read SPPlatformReporter binary: %s\n", binPathSPPlatformReporter);
+        SYSLOG(SPFX_PLUGIN, "Failed to read SPPlatformReporter binary: %s", binPathSPPlatformReporter);
         return false;
     }
     
@@ -403,18 +419,20 @@ static bool buildPatchesSPPlatformReporter(void *user, KernelPatcher &patcher) {
             break;
         }
     }
-    if (address == 0)
+    if (address == 0) {
+        SYSLOG(SPFX_PLUGIN, "Failed to locate _ASI_CopyCPUKind");
+        Buffer::deleter(buffer);
         return false;
+    }
     
     // Store find pattern.
     DBGLOG(SPFX_PLUGIN, "Found _ASI_CopyCPUKind @ 0x%llX", address);
     lmemcpy(findSPPlatformReporterHideCPU, &buffer[address], arrsize(findSPPlatformReporterHideCPU));
-    return true;
-}
-
-static bool buildPatchesAppleSystemInfo(void *user, KernelPatcher &patcher) {
-    DBGLOG(SPFX_PLUGIN, "Generating patches for AppleSystemInfo");
+    Buffer::deleter(buffer);
     
+    //
+    // Patch AppleSystemInfo to return arbitrary CPU name.
+    //
     MachInfo *machInfo = MachInfo::create();
     if (machInfo == NULL) {
         SYSLOG(SPFX_PLUGIN, "Failed to create mach info for AppleSystemInfo");
@@ -429,6 +447,7 @@ static bool buildPatchesAppleSystemInfo(void *user, KernelPatcher &patcher) {
         return false;
     }
     
+    // Locate _ASI_CopyCPUKind function.
     mach_vm_address_t addressCopyCPUKind = machInfo->solveSymbol("_ASI_CopyCPUKind");
     if (addressCopyCPUKind == 0) {
         machInfo->deinit();
@@ -437,21 +456,55 @@ static bool buildPatchesAppleSystemInfo(void *user, KernelPatcher &patcher) {
         return false;
     }
     DBGLOG(SPFX_PLUGIN, "Located symbol _ASI_CopyCPUKind @ 0x%llX", addressCopyCPUKind);
+    
+    // Locate _gMajorMinorTypesTable table, containing CPU string to type mappings.
+    mach_vm_address_t addressMajorMinorTypesTable = machInfo->solveSymbol("_gMajorMinorTypesTable");
+    if (addressMajorMinorTypesTable == 0) {
+        machInfo->deinit();
+        MachInfo::deleter(machInfo);
+        SYSLOG(SPFX_PLUGIN, "Failed to locate symbol _gMajorMinorTypesTable");
+        return false;
+    }
+    DBGLOG(SPFX_PLUGIN, "Located symbol _gMajorMinorTypesTable @ 0x%llX", addressMajorMinorTypesTable);
+    
     machInfo->deinit();
     MachInfo::deleter(machInfo);
     
-    size_t bufferSize;
-    uint8_t *buffer = FileIO::readFileToBuffer(binPathAppleSystemInfo, bufferSize);
+    bufferSize = 0;
+    buffer = FileIO::readFileToBuffer(binPathAppleSystemInfo, bufferSize);
     if (buffer == NULL) {
-        SYSLOG(SPFX_PLUGIN, "Failed to read AppleSystemInfo binary: %s\n", binPathAppleSystemInfo);
+        SYSLOG(SPFX_PLUGIN, "Failed to read AppleSystemInfo binary: %s", binPathAppleSystemInfo);
         return false;
     }
+    
+    // Determine lowest available offset for CPU name use.
+    uintptr_t cpuNameOffset = 0;
+    AsiProcessorInfo *procTable = (AsiProcessorInfo*)(&buffer[addressMajorMinorTypesTable]);
+    while (procTable->MarketingNameOffset != 0) {
+        DBGLOG(SPFX_PLUGIN, "Found offset @ %X", procTable->MarketingNameOffset);
+        if (cpuNameOffset == 0 || procTable->MarketingNameOffset < cpuNameOffset)
+            cpuNameOffset = procTable->MarketingNameOffset;
+        procTable++;
+    }
+    if (cpuNameOffset == 0) {
+        SYSLOG(SPFX_PLUGIN, "Failed to determine offset for CPU name");
+        Buffer::deleter(buffer);
+        return false;
+    }
+    DBGLOG(SPFX_PLUGIN, "Located string offset @ 0x%llX", cpuNameOffset);
+    IOSleep(5000);
+    
+    size_t strLen = strlen("Core 3 Trio Extreme");
+    lmemcpy(findStringASICPUName, &buffer[cpuNameOffset], arrsize(findStringASICPUName));
+    lmemcpy(replaceStringASICPUName, "Core 3 Trio Extreme", strLen);
+    
     
     if (addressCopyCPUKind <= findASICopyCPUKind1Offset
         || addressCopyCPUKind < findASICopyCPUKind2Offset
         || addressCopyCPUKind < arrsize(findASICopyCPUKind3)
         || bufferSize < addressCopyCPUKind - findASICopyCPUKind1Offset + arrsize(findASICopyCPUKind1)) {
         SYSLOG(SPFX_PLUGIN, "Offset of symbol _ASI_CopyCPUKind is not valid.");
+        Buffer::deleter(buffer);
         return false;
     }
     
@@ -484,6 +537,7 @@ static bool buildPatchesAppleSystemInfo(void *user, KernelPatcher &patcher) {
     if (addressCfString1 == 0 ||
         bufferSize < addressCfString1 + arrsize(findASICopyCPUKind2)) {
         SYSLOG(SPFX_PLUGIN, "Failed to locate CFStringCreateWithCString patch point 1");
+        Buffer::deleter(buffer);
         return false;
     }
     DBGLOG(SPFX_PLUGIN, "Located CFStringCreateWithCString patch point 1 @ 0x%llX", addressCfString1);
@@ -492,6 +546,9 @@ static bool buildPatchesAppleSystemInfo(void *user, KernelPatcher &patcher) {
     lmemcpy(findASICopyCPUKind2, &buffer[addressCfString1], arrsize(findASICopyCPUKind2));
     *(uint32_t*)(&replaceASICopyCPUKind1[replaceASICopyCPUKind1JmpOffset]) = (uint32_t)(addressCfString1 - (addressCopyCPUKind - findASICopyCPUKind1Offset + arrsize(findASICopyCPUKind1)));
     DBGLOG(SPFX_PLUGIN, "Short jump 0x%X", (uint32_t)(addressCfString1 - (addressCopyCPUKind - findASICopyCPUKind1Offset + arrsize(findASICopyCPUKind1))));
+    *(uint32_t*)(&replaceASICopyCPUKind2[replaceASICopyCPUKind2NameOffset]) = (uint32_t)(cpuNameOffset - addressCfString1 - replaceASICopyCPUKind2NameOffset - sizeof(uint32_t));
+    DBGLOG(SPFX_PLUGIN, "String location 0x%X", (uint32_t)((cpuNameOffset - addressCfString1) + replaceASICopyCPUKind2NameOffset + sizeof(uint32_t)));
+    IOSleep(5000);
     
     for (int i = 0; i < arrsize(findASICopyCPUKind1); i++) {
         DBGLOG(SPFX_PLUGIN, "find1 (%u): 0x%X 0x%X", i, findASICopyCPUKind1[i], replaceASICopyCPUKind1[i]);
@@ -516,10 +573,13 @@ static bool buildPatchesAppleSystemInfo(void *user, KernelPatcher &patcher) {
     if (addressCfString2 == 0 ||
         bufferSize < addressCfString2 + arrsize(findASICopyCPUKind3)) {
         SYSLOG(SPFX_PLUGIN, "Failed to locate CFStringCreateWithCString patch point 2");
+        Buffer::deleter(buffer);
         return false;
     }
     DBGLOG(SPFX_PLUGIN, "Located CFStringCreateWithCString patch point 2 @ 0x%llX", addressCfString2);
+    
     lmemcpy(findASICopyCPUKind3, &buffer[addressCfString2], arrsize(findASICopyCPUKind3));
+    Buffer::deleter(buffer);
     
     return true;
 }
@@ -527,23 +587,21 @@ static bool buildPatchesAppleSystemInfo(void *user, KernelPatcher &patcher) {
 static bool patchMemoryUpgradability(void *user, KernelPatcher &patcher) {
     DBGLOG(SPFX_PLUGIN, "Generating memory upgradeablity state patches...");
     
-    // Catalina and higher has System Information in different location.
+    // Catalina and higher has System Information binary in different location.
     const char *binPaths[] = {
         binPathSPMemoryReporter,
         getKernelVersion() >= KernelVersion::Catalina ? binPathSystemInformationCatalina : binPathSystemInformation
     };
-    
     uint8_t *binFinds[] = {
         findMemBytesSPMemoryReporter,
         findMemBytesSystemInformation
     };
     
-    
     for (int i = 0; i < arrsize(binPaths); i++) {
         size_t bufferSize;
         uint8_t *buffer = FileIO::readFileToBuffer(binPaths[i], bufferSize);
         if (buffer == NULL) {
-            SYSLOG(SPFX_PLUGIN, "Failed to read binary: %s\n", binPaths[i]);
+            SYSLOG(SPFX_PLUGIN, "Failed to read binary: %s", binPaths[i]);
             return false;
         }
         
@@ -561,7 +619,7 @@ static bool patchMemoryUpgradability(void *user, KernelPatcher &patcher) {
             }
         }
         if (address == 0) {
-            SYSLOG(SPFX_PLUGIN, "Failed to get patch point\n");
+            SYSLOG(SPFX_PLUGIN, "Failed to get patch point");
             Buffer::deleter(buffer);
             return false;
         }
@@ -573,12 +631,19 @@ static bool patchMemoryUpgradability(void *user, KernelPatcher &patcher) {
     return true;
 }
 
+static bool patchPciTabVisibility(void *user, KernelPatcher &patcher) {
+    DBGLOG(SPFX_PLUGIN, "Generating PCI tab visibility patches...");
+    
+    
+    // TODO: add
+    return true;
+}
+
 static void buildPatches(void *user, KernelPatcher &patcher) {
 
     
     
-    buildPatchesSPPlatformReporter(user, patcher);
-    buildPatchesAppleSystemInfo(user, patcher);
+    patchCPUName(user, patcher);
     patchMemoryUpgradability(user, patcher);
     IOSleep(5000);
     return;
