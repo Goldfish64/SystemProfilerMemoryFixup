@@ -37,7 +37,7 @@
 	<key>OSBundleCompatibleVersion</key>
 	<string>1.0</string>
 	<key>NSHumanReadableCopyright</key>
-	<string>Copyright © 2018-2019 Goldfish64. All rights reserved.</string>
+	<string>Copyright © 2018-2020 Goldfish64. All rights reserved.</string>
 	<key>OSBundleLibraries</key>
 	<dict>
 		<key>as.vit9696.Lilu</key>
