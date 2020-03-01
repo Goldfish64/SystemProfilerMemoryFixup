@@ -91,6 +91,7 @@ private:
     
     bool patchMemoryUpgradability(spfx_binary *binSPMemoryReporter, spfx_binary *binSystemInformation);
     bool patchCPUName(spfx_binary *binAppleSystemInfo, spfx_binary *binSPPlatformReporter);
+    bool patchSerial(spfx_binary *binAppleSystemInfo, spfx_binary *binSPPlatformReporter);
     
 };
 
