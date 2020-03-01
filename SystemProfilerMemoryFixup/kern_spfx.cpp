@@ -100,7 +100,7 @@ void SPFX::buildPatches(KernelPatcher &patcher) {
         return;
     }
     
-    patchMemoryUpgradability(&binSPMemoryReporter, &binSystemInformation);
+    patchMemoryUpgradability(&binSPMemoryReporter, &binSystemInformation, false);
     patchCPUName(&binAppleSystemInfo, &binSPPlatformReporter);
     patchSerial(&binAppleSystemInfo, &binSPPlatformReporter);
     

@@ -89,7 +89,7 @@ private:
     void copyMem(void *dst, const void *src, size_t length);
     void buildPatches(KernelPatcher &patcher);
     
-    bool patchMemoryUpgradability(spfx_binary *binSPMemoryReporter, spfx_binary *binSystemInformation);
+    bool patchMemoryUpgradability(spfx_binary *binSPMemoryReporter, spfx_binary *binSystemInformation, bool enabled);
     bool patchCPUName(spfx_binary *binAppleSystemInfo, spfx_binary *binSPPlatformReporter);
     bool patchSerial(spfx_binary *binAppleSystemInfo, spfx_binary *binSPPlatformReporter);
     

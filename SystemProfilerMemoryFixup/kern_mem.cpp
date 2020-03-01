@@ -39,18 +39,30 @@ static UserPatcher::BinaryModPatch patchStringAir {
     SECTION_ACTIVE
 };
 
-// Find:    BF 02 00 00 00 E8 XX XX XX XX
-// Replace: B8 08 00 00 00 0F 1F 44 00 00
-static const uint8_t replaceMemBytes[] = { 0xB8, 0x00, 0x00, 0x00, 0x00, 0x0F, 0x1F, 0x44, 0x00, 0x00 };
-static const size_t findMemBytesCount = arrsize(replaceMemBytes);
+//
+// Disables call to ASI_IsPlatformFeatureEnabled(0x2) - System Information, SPMemoryReporter
+//
+// Find (generated at runtime):
+//   call ASI_IsPlatformFeatureEnabled
+//
+// Replace (when enabling memory upgradeability):
+//   xor rax, rax
+//   nop
+//   nop
+//
+// Replace (when disabling memory upgradeability):
+//   mov eax, 0x1
+//
+static const uint8_t replaceMemBytesEnabled[]   = { 0x48, 0x31, 0xC0, 0x90, 0x90 };
+static const uint8_t replaceMemBytesDisabled[]  = { 0xB8, 0x01, 0x00, 0x00, 0x00 };
+static const size_t findMemBytesCount = arrsize(replaceMemBytesEnabled);
 static uint8_t findMemBytesSystemInformation[findMemBytesCount];
 static uint8_t findMemBytesSPMemoryReporter[findMemBytesCount];
-
 static UserPatcher::BinaryModPatch patchBytesMemSPMemoryReporter {
     CPU_TYPE_X86_64,
     0,
     findMemBytesSPMemoryReporter,
-    replaceMemBytes,
+    replaceMemBytesEnabled,
     findMemBytesCount,
     0,
     1,
@@ -61,7 +73,7 @@ static UserPatcher::BinaryModPatch patchMemBytesSystemInformation {
     CPU_TYPE_X86_64,
     0,
     findMemBytesSystemInformation,
-    replaceMemBytes,
+    replaceMemBytesEnabled,
     findMemBytesCount,
     0,
     1,
@@ -69,8 +81,8 @@ static UserPatcher::BinaryModPatch patchMemBytesSystemInformation {
     SECTION_ACTIVE
 };
 
-bool SPFX::patchMemoryUpgradability(spfx_binary *binSPMemoryReporter, spfx_binary *binSystemInformation) {
-    DBGLOG(SPFX_PLUGIN, "Enabling memory upgradeablity state patches...");
+bool SPFX::patchMemoryUpgradability(spfx_binary *binSPMemoryReporter, spfx_binary *binSystemInformation, bool enabled) {
+    DBGLOG(SPFX_PLUGIN, "Enabling memory upgradeability state patches (memory upgradeability = %u)...", enabled);
     spfx_binary *binaries[] = {
         binSPMemoryReporter,
         binSystemInformation
@@ -85,17 +97,17 @@ bool SPFX::patchMemoryUpgradability(spfx_binary *binSPMemoryReporter, spfx_binar
         size_t bufferSize = binaries[i]->Size;
         
         //
-        // Locate where ASI_IsPlatformFeatureEnabled is called.
+        // Locate where ASI_IsPlatformFeatureEnabled(0x2) is called.
         //
         off_t address = 0;
-        for (off_t i = 0; i < bufferSize - 6; i++) {
+        for (off_t i = 0; i < bufferSize - sizeof(uint64_t); i++) {
             if (buffer[i] == 0xBF
                 && buffer[i + 1] == 0x02
                 && buffer[i + 2] == 0x00
                 && buffer[i + 3] == 0x00
                 && buffer[i + 4] == 0x00
                 && buffer[i + 5] == 0xE8) {
-                address = i;
+                address = i + 5;
                 break;
             }
         }
@@ -107,9 +119,21 @@ bool SPFX::patchMemoryUpgradability(spfx_binary *binSPMemoryReporter, spfx_binar
         copyMem(binFinds[i], &buffer[address], findMemBytesCount);
     }
     
+    if (enabled) {
+        //
+        // Apply MacBookAir whitelist patch.
+        //
+        patchesSPMemoryReporter->push_back(patchStringAir);
+        patchesSystemInformation->push_back(patchStringAir);
+    } else {
+        //
+        // Use disabled patches instead.
+        //
+        patchBytesMemSPMemoryReporter.replace = replaceMemBytesDisabled;
+        patchMemBytesSystemInformation.replace = replaceMemBytesDisabled;
+    }
+    
     patchesSPMemoryReporter->push_back(patchBytesMemSPMemoryReporter);
-    patchesSPMemoryReporter->push_back(patchStringAir);
     patchesSystemInformation->push_back(patchMemBytesSystemInformation);
-    patchesSystemInformation->push_back(patchStringAir);
     return true;
 }
