@@ -31,6 +31,9 @@
 		4120B1F02198DD1200888F5A /* kern_policy.hpp in Headers */ = {isa = PBXBuildFile; fileRef = 4120B1DC2198DD1200888F5A /* kern_policy.hpp */; };
 		4120B1F12198DD1200888F5A /* kern_util.hpp in Headers */ = {isa = PBXBuildFile; fileRef = 4120B1DD2198DD1200888F5A /* kern_util.hpp */; };
 		4120B1F32198DE3F00888F5A /* kern_start.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4120B1F22198DE3F00888F5A /* kern_start.cpp */; };
+		414B289E240B236F0092CEE8 /* kern_cpu.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 414B289D240B236F0092CEE8 /* kern_cpu.cpp */; };
+		414B28A3240B242C0092CEE8 /* kern_mem.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 414B28A1240B242C0092CEE8 /* kern_mem.cpp */; };
+		414B28A5240B28D90092CEE8 /* kern_spfx.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 414B28A4240B28D90092CEE8 /* kern_spfx.cpp */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -60,6 +63,10 @@
 		4120B1DC2198DD1200888F5A /* kern_policy.hpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.h; name = kern_policy.hpp; path = Lilu.kext/Contents/Resources/Headers/kern_policy.hpp; sourceTree = SOURCE_ROOT; };
 		4120B1DD2198DD1200888F5A /* kern_util.hpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.h; name = kern_util.hpp; path = Lilu.kext/Contents/Resources/Headers/kern_util.hpp; sourceTree = SOURCE_ROOT; };
 		4120B1F22198DE3F00888F5A /* kern_start.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = kern_start.cpp; sourceTree = "<group>"; };
+		414B289D240B236F0092CEE8 /* kern_cpu.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = kern_cpu.cpp; sourceTree = "<group>"; };
+		414B289F240B23A70092CEE8 /* kern_spfx.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; path = kern_spfx.hpp; sourceTree = "<group>"; };
+		414B28A1240B242C0092CEE8 /* kern_mem.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = kern_mem.cpp; sourceTree = "<group>"; };
+		414B28A4240B28D90092CEE8 /* kern_spfx.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = kern_spfx.cpp; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -96,6 +103,10 @@
 			children = (
 				4120B1BB2198DC9B00888F5A /* Info.plist */,
 				4120B1F22198DE3F00888F5A /* kern_start.cpp */,
+				414B289D240B236F0092CEE8 /* kern_cpu.cpp */,
+				414B289F240B23A70092CEE8 /* kern_spfx.hpp */,
+				414B28A1240B242C0092CEE8 /* kern_mem.cpp */,
+				414B28A4240B28D90092CEE8 /* kern_spfx.cpp */,
 			);
 			path = SystemProfilerMemoryFixup;
 			sourceTree = "<group>";
@@ -245,6 +256,9 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				414B289E240B236F0092CEE8 /* kern_cpu.cpp in Sources */,
+				414B28A3240B242C0092CEE8 /* kern_mem.cpp in Sources */,
+				414B28A5240B28D90092CEE8 /* kern_spfx.cpp in Sources */,
 				4120B1F32198DE3F00888F5A /* kern_start.cpp in Sources */,
 				4120B1C72198DCF000888F5A /* plugin_start.cpp in Sources */,
 			);
