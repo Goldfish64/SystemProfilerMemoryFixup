@@ -22,7 +22,9 @@
 
 #include "kern_spfx.hpp"
 
-// MacBookAir name patch.
+//
+// MacBookAir name patch - System Information, SPMemoryReporter
+//
 static const uint8_t findStringAir[] = "MacBookAir";
 static const uint8_t replaceStringAir[] = "MacBookXir";
 static UserPatcher::BinaryModPatch patchStringAir {

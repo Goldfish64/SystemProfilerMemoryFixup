@@ -26,8 +26,8 @@
 // Patches to return arbitrary CPU name from _ASI_CopyCPUKind
 //
 //
-
-// Patch 1
+//
+// Patch 1 - AppleSystemInfo
 //
 // Find (generated at runtime):
 //   Starting instructions of _ASI_CopyCPUKind with 12 bytes of immediate previous function
@@ -57,7 +57,8 @@ static UserPatcher::BinaryModPatch patchASICopyCPUKind1 {
     SECTION_ACTIVE
 };
 
-// Patch 2
+//
+// Patch 2 - AppleSystemInfo
 //
 // Find (generated at runtime):
 //  ... (10 bytes)
@@ -85,7 +86,8 @@ static UserPatcher::BinaryModPatch patchASICopyCPUKind2 {
     SECTION_ACTIVE
 };
 
-// Patch 3
+//
+// Patch 3 - AppleSystemInfo
 //
 // Find (generated at runtime):
 //
@@ -113,7 +115,7 @@ static UserPatcher::BinaryModPatch patchASICopyCPUKind3 {
 };
 
 //
-// CPU name string patch.
+// CPU name string patch - AppleSystemInfo
 //
 static uint8_t findStringASICPUName[64];
 static uint8_t replaceStringASICPUName[64];
@@ -130,7 +132,7 @@ static UserPatcher::BinaryModPatch patchStringASICPUName {
 };
 
 //
-// Patch to hide CPU name from SPPlatformReporter.
+// Patch to hide CPU name - SPPlatformReporter
 //
 // Find (generated at runtime):
 //   mov edi, 0x1
@@ -140,9 +142,10 @@ static UserPatcher::BinaryModPatch patchStringASICPUName {
 //   xor rax, rax
 //   nop
 //   nop
+//   mov edi, ...
 //
-static const uint8_t replaceSPPlatformReporterHideCPU[] = { 0x48, 0x31, 0xC0, 0x90, 0x90 };
-static uint8_t findSPPlatformReporterHideCPU[arrsize(replaceSPPlatformReporterHideCPU)];
+static const uint8_t findSPPlatformReporterHideCPU[] = { 0xBF, 0x01, 0x00, 0x00, 0x00, 0xE8 };
+static const uint8_t replaceSPPlatformReporterHideCPU[] = { 0x48, 0x31, 0xC0, 0x90, 0x90, 0xBF };
 static UserPatcher::BinaryModPatch patchSPPlatformReporterHideCPU {
     CPU_TYPE_X86_64,
     0,
@@ -164,9 +167,7 @@ bool SPFX::patchCPUName(spfx_binary *binAppleSystemInfo, spfx_binary *binSPPlatf
     
     uint8_t *bufferAppleSystemInfo      = binAppleSystemInfo->Buffer;
     size_t bufferSizeAppleSystemInfo    = binAppleSystemInfo->Size;
-    uint8_t *bufferSPPlatformReporter   = binSPPlatformReporter->Buffer;
-    size_t bufferSizeSPPlatformReporter = binSPPlatformReporter->Size;
-
+    
     //
     // Patch SPPlatformReporter to hide CPU name first.
     //
@@ -174,7 +175,7 @@ bool SPFX::patchCPUName(spfx_binary *binAppleSystemInfo, spfx_binary *binSPPlatf
     // Determine where _ASI_CopyCPUKind is called.
     //   mov edi, 0x1
     //   call...
-    off_t address = 0;
+   /* off_t address = 0;
     for (off_t i = 0; i < bufferSizeSPPlatformReporter + 5; i++) {
         if (bufferSPPlatformReporter[i] == 0xBF
             && bufferSPPlatformReporter[i + 1] == 0x01
@@ -193,7 +194,7 @@ bool SPFX::patchCPUName(spfx_binary *binAppleSystemInfo, spfx_binary *binSPPlatf
     
     // Store find pattern.
     DBGLOG(SPFX_PLUGIN, "Found _ASI_CopyCPUKind @ 0x%llX", address);
-    copyMem(findSPPlatformReporterHideCPU, &bufferSPPlatformReporter[address], arrsize(findSPPlatformReporterHideCPU));
+    copyMem(findSPPlatformReporterHideCPU, &bufferSPPlatformReporter[address], arrsize(findSPPlatformReporterHideCPU));*/
     
     //
     // Patch AppleSystemInfo to return arbitrary CPU name.
